@@ -5,11 +5,13 @@ from analysis_service import (
     merge_live_and_history,
     analyze_candles
 )
+from flask_cors import CORS
 
 import threading
 import traceback
 
 app = Flask(__name__)
+CORS(app)
 
 # =========================================================
 # START WEBSOCKET SERVICE
