@@ -219,6 +219,17 @@ def status():
         "live_candle": service.latest_candle
     })
 
+@app.route("/webhook/analysis", methods=["POST"])
+def webhook_analysis():
+    global latest_analysis
+
+    payload = request.json
+    latest_analysis = payload
+
+    return jsonify({
+        "success": True
+    })
+
 
 # =========================================================
 # RUN SERVER
