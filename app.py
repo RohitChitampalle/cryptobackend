@@ -58,7 +58,34 @@ def ticker():
         "data": service.latest_ticker or {}
     })
 
+@app.route("/test/candles", methods=["GET"])
+def test_candles():
 
+    symbol = request.args.get("symbol", "BTCUSD")
+    timeframe = request.args.get("timeframe", "5m")
+
+    try:
+
+        candles = get_historical_candles(symbol, timeframe)
+
+        return jsonify({
+            "success": True,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "total_candles": len(candles),
+            "first_candle": candles[0] if candles else None,
+            "last_candle": candles[-1] if candles else None
+        })
+
+    except Exception as e:
+
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+        
 @app.route("/api/market/trade", methods=["GET"])
 def trade():
     return jsonify({
@@ -79,81 +106,88 @@ def candle():
 # BTC ANALYSIS
 # =========================================================
 
-@app.route("/api/analysis/btc", methods=["GET"])
-def btc_analysis():
+# @app.route("/api/analysis/btc", methods=["GET"])
+# def btc_analysis():
 
-    try:
+#     try:
 
-        # -------------------------------------------------
-        # 1. Historical Candles
-        # -------------------------------------------------
-        history = get_historical_candles()
+#         # -------------------------------------------------
+#         # 1. Historical Candles
+#         # -------------------------------------------------
+#         history = get_historical_candles()
 
-        if not isinstance(history, list):
-            return jsonify({
-                "success": False,
-                "error": "Historical candles not returned as list"
-            }), 500
+#         if not isinstance(history, list):
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Historical candles not returned as list"
+#             }), 500
 
-        # -------------------------------------------------
-        # 2. Live Candle
-        # -------------------------------------------------
-        live = service.latest_candle
+#         # -------------------------------------------------
+#         # 2. Live Candle
+#         # -------------------------------------------------
+#         live = service.latest_candle
 
-        # -------------------------------------------------
-        # 3. Merge
-        # -------------------------------------------------
-        candles = merge_live_and_history(history, live)
+#         # -------------------------------------------------
+#         # 3. Merge
+#         # -------------------------------------------------
+#         candles = merge_live_and_history(history, live)
 
-        # -------------------------------------------------
-        # 4. Validate
-        # -------------------------------------------------
-        if len(candles) < 50:
-            return jsonify({
-                "success": False,
-                "error": "Not enough candle data",
-                "total_candles": len(candles)
-            }), 400
+#         # -------------------------------------------------
+#         # 4. Validate
+#         # -------------------------------------------------
+#         if len(candles) < 50:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Not enough candle data",
+#                 "total_candles": len(candles)
+#             }), 400
 
-        # -------------------------------------------------
-        # 5. Analysis
-        # -------------------------------------------------
-        result = analyze_candles(candles)
+#         # -------------------------------------------------
+#         # 5. Analysis
+#         # -------------------------------------------------
+#         result = analyze_candles(candles)
 
-        # -------------------------------------------------
-        # 6. Debug Logs
-        # -------------------------------------------------
-        print("\n" + "=" * 60)
-        print("BTC ANALYSIS")
-        print("=" * 60)
-        print("Historical Candles :", len(history))
-        print("Live Candle Exists :", live is not None)
-        print("Total Candles      :", len(candles))
+#         # -------------------------------------------------
+#         # 6. Debug Logs
+#         # -------------------------------------------------
+#         print("\n" + "=" * 60)
+#         print("BTC ANALYSIS")
+#         print("=" * 60)
+#         print("Historical Candles :", len(history))
+#         print("Live Candle Exists :", live is not None)
+#         print("Total Candles      :", len(candles))
 
-        if candles:
-            print("Last Close         :", candles[-1]["close"])
+#         if candles:
+#             print("Last Close         :", candles[-1]["close"])
 
-        print("Signal             :", result["decision"]["action"])
-        print("Prediction         :", result["decision"]["prediction"])
-        print("=" * 60)
+#         print("Signal             :", result["decision"]["action"])
+#         print("Prediction         :", result["decision"]["prediction"])
+#         print("=" * 60)
 
-        return jsonify({
-            "success": True,
-            "symbol": "BTCUSD",
-            "analysis": result,
-            "total_candles": len(candles)
-        })
+#         return jsonify({
+#             "success": True,
+#             "symbol": "BTCUSD",
+#             "analysis": result,
+#             "total_candles": len(candles)
+#         })
 
-    except Exception as e:
+#     except Exception as e:
 
-        traceback.print_exc()
+#         traceback.print_exc()
 
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+#         return jsonify({
+#             "success": False,
+#             "error": str(e)
+#         }), 500
 
+@app.route("/api/analysis/<symbol>")
+def get_analysis(symbol):
 
+    timeframe = request.args.get("timeframe", "5m")
+
+    candles = get_historical_candles(symbol, timeframe)
+
+    return jsonify(analyze_candles(candles, timeframe))
 # =========================================================
 # ORDER EXECUTION
 # =========================================================
