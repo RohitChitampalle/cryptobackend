@@ -469,8 +469,8 @@ def analyze_candles(candles):
     # EMA (1-HOUR TREND)
     # ==========================================
 
+    ema9 = calculate_ema(closes, 9)
     ema20 = calculate_ema(closes, 20)
-    ema50 = calculate_ema(closes, 50)
 
     # ==========================================
     # RSI
@@ -506,10 +506,10 @@ def analyze_candles(candles):
     signal = "HOLD"
     reason = []
 
-    if ema20 > ema50:
-        reason.append("EMA20 above EMA50")
+    if ema9 > ema20:
+        reason.append("EMA9 above EMA20")
     else:
-        reason.append("EMA20 below EMA50")
+        reason.append("EMA9 below EMA20")
 
     if rsi > 55:
         reason.append("Bullish RSI")
@@ -521,14 +521,14 @@ def analyze_candles(candles):
         reason.append("Volume spike detected")
 
     if (
-        ema20 > ema50 and
+        ema9 > ema20 and
         rsi > 55 and
         momentum > 0
     ):
         signal = "BUY"
 
     elif (
-        ema20 < ema50 and
+        ema9 < ema20 and
         rsi < 45 and
         momentum < 0
     ):
@@ -602,8 +602,8 @@ def analyze_candles(candles):
     return {
         "market_summary": {
             "price": round(current_price, 2),
+            "ema9": round(ema9, 2),
             "ema20": round(ema20, 2),
-            "ema50": round(ema50, 2),
             "rsi": round(rsi, 2),
             "atr": round(atr, 2),
             "momentum_1h": round(momentum, 2)
