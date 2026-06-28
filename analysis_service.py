@@ -46,6 +46,27 @@ def get_historical_candles():
         return []
 
 
+def get_product_names():
+
+    url = "https://api.india.delta.exchange/v2/products"
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+
+    data = response.json()
+
+    products = data.get("result", [])
+
+    return [
+        p["symbol"]
+        for p in products
+        if (
+            p.get("contract_type") == "perpetual_futures"
+            and p.get("state") == "live"
+        )
+    ]
+
+    
 # =====================================================
 # SIMPLE EMA
 # =====================================================

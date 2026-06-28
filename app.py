@@ -3,7 +3,8 @@ from delta_service import DeltaService, place_order
 from analysis_service import (
     get_historical_candles,
     merge_live_and_history,
-    analyze_candles
+    analyze_candles,
+    get_product_names
 )
 from flask_cors import CORS
 
@@ -229,7 +230,28 @@ def webhook_analysis():
     return jsonify({
         "success": True
     })
+@app.route("/api/products", methods=["GET"])
+def products():
 
+    try:
+
+        products = get_product_names()
+
+        return jsonify({
+            "success": True,
+            "count": len(products),
+            "products": products
+        })
+
+    except Exception as e:
+
+        traceback.print_exc()
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
 
 # =========================================================
 # RUN SERVER
