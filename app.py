@@ -185,9 +185,18 @@ def get_analysis(symbol):
 
     timeframe = request.args.get("timeframe", "5m")
 
-    candles = get_historical_candles(symbol, timeframe)
+    candles = get_historical_candles(
+        symbol,
+        timeframe
+    )
 
-    return jsonify(analyze_candles(candles, timeframe))
+    result = analyze_candles(
+        candles,
+        timeframe,
+        symbol
+    )
+
+    return jsonify(result)
 # =========================================================
 # ORDER EXECUTION
 # =========================================================
