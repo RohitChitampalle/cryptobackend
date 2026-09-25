@@ -10,10 +10,120 @@ from flask_cors import CORS
 
 import threading
 import traceback
+import os
+from kiteconnect import KiteConnect
+from dotenv import load_dotenv
+
+load_dotenv()
+
+KITE_API_KEY = os.getenv("KITE_API_KEY")
+KITE_API_SECRET = os.getenv("KITE_API_SECRET")
+
+kite = KiteConnect(api_key=KITE_API_KEY)
 
 app = Flask(__name__)
 CORS(app)
 
+
+#=======================================================
+# KITE LOGIN
+#=======================================================
+@app.route("/api/kite/login", methods=["GET"])
+def kite_login():
+    try:
+        login_url = kite.login_url()
+        return jsonify({
+            "success": True,
+            "login_url": login_url
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
+
+@app.route("/api/kite/callback", methods=["GET"])
+def kite_callback():
+
+    print("====================================")
+    print("KITE CALLBACK HIT")
+    print("URL:", request.url)
+    print("ARGS:", request.args.to_dict())
+    print("====================================")
+
+    request_token = request.args.get("request_token")
+    status = request.args.get("status")
+    action = request.args.get("action")
+
+    if not request_token:
+        return jsonify({
+            "success": False,
+            "error": "request_token not received",
+            "status": status,
+            "action": action,
+            "received_params": request.args.to_dict()
+        }), 400
+
+    try:
+
+        session_data = kite.generate_session(
+            request_token,
+            api_secret=KITE_API_SECRET
+        )
+
+        access_token = session_data["access_token"]
+
+        app.config["KITE_ACCESS_TOKEN"] = access_token
+
+        kite.set_access_token(access_token)
+
+        print("KITE LOGIN SUCCESS")
+        print("USER:", session_data.get("user_id"))
+
+        return jsonify({
+            "success": True,
+            "message": "Zerodha login successful",
+            "user_id": session_data.get("user_id"),
+            "user_name": session_data.get("user_name"),
+            "access_token_received": True
+        })
+
+    except Exception as e:
+
+        print("KITE SESSION ERROR:", str(e))
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
+@app.route("/api/kite/profile", methods=["GET"])
+def kite_profile():
+
+    access_token = app.config.get("KITE_ACCESS_TOKEN")
+
+    if not access_token:
+        return jsonify({
+            "success": False,
+            "error": "Zerodha is not connected"
+        }), 401
+
+    try:
+        kite.set_access_token(access_token)
+
+        profile = kite.profile()
+
+        return jsonify({
+            "success": True,
+            "data": profile
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # =========================================================
 # START WEBSOCKET SERVICE
 # =========================================================
@@ -84,7 +194,7 @@ def test_candles():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 500
+        }), 500 
         
 @app.route("/api/market/trade", methods=["GET"])
 def trade():
