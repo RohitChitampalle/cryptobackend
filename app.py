@@ -178,6 +178,262 @@ def kite_instruments():
             "success": False,
             "error": str(e)
         }), 500
+    
+# =========================================================
+# /api/kite/products endpoint that returns NSE + BSE + NFO + MCX, 
+# removes duplicates, categorizes INDEX/EQUITY/FUTURES/OPTIONS
+# =========================================================
+@app.route("/api/kite/products", methods=["GET"])
+def kite_products():
+
+    access_token = app.config.get("KITE_ACCESS_TOKEN")
+
+    if not access_token:
+        return jsonify({
+            "success": False,
+            "error": "Zerodha is not connected"
+        }), 401
+
+    try:
+
+        kite.set_access_token(access_token)
+
+        # ==========================================
+        # Query parameters
+        # ==========================================
+
+        exchange = request.args.get("exchange", "ALL").upper()
+        search = request.args.get("search", "").strip().upper()
+        category = request.args.get("category", "ALL").upper()
+
+        # Pagination
+        try:
+            page = max(int(request.args.get("page", 1)), 1)
+        except ValueError:
+            page = 1
+
+        try:
+            limit = min(
+                max(int(request.args.get("limit", 100)), 1),
+                500
+            )
+        except ValueError:
+            limit = 100
+
+        # ==========================================
+        # Supported exchanges
+        # ==========================================
+
+        valid_exchanges = [
+            "NSE",
+            "BSE",
+            "NFO",
+            "BFO",
+            "MCX",
+            "CDS"
+        ]
+
+        if exchange != "ALL" and exchange not in valid_exchanges:
+            return jsonify({
+                "success": False,
+                "error": "Invalid exchange",
+                "valid_exchanges": valid_exchanges
+            }), 400
+
+        # ==========================================
+        # Get instruments
+        # ==========================================
+
+        if exchange == "ALL":
+
+            instruments = []
+
+            for ex in valid_exchanges:
+
+                try:
+                    data = kite.instruments(ex)
+                    instruments.extend(data)
+
+                except Exception as ex_error:
+
+                    print(
+                        f"Failed to load {ex} instruments:",
+                        str(ex_error)
+                    )
+
+        else:
+
+            instruments = kite.instruments(exchange)
+
+        # ==========================================
+        # Process instruments
+        # ==========================================
+
+        products = []
+
+        for item in instruments:
+
+            symbol = item.get("tradingsymbol", "")
+            name = item.get("name", "")
+            instrument_type = item.get("instrument_type", "")
+            segment = item.get("segment", "")
+            item_exchange = item.get("exchange", "")
+
+            symbol_upper = symbol.upper()
+            name_upper = name.upper()
+
+            # ======================================
+            # Determine category
+            # ======================================
+
+            if segment == "INDICES":
+
+                product_category = "INDEX"
+
+            elif instrument_type == "EQ":
+
+                product_category = "EQUITY"
+
+            elif instrument_type == "FUT":
+
+                product_category = "FUTURES"
+
+            elif instrument_type in ["CE", "PE"]:
+
+                product_category = "OPTIONS"
+
+            elif instrument_type == "COM":
+
+                product_category = "COMMODITY"
+
+            else:
+
+                product_category = instrument_type or "OTHER"
+
+            # ======================================
+            # Search filter
+            # ======================================
+
+            if search:
+
+                if (
+                    search not in symbol_upper
+                    and search not in name_upper
+                ):
+                    continue
+
+            # ======================================
+            # Category filter
+            # ======================================
+
+            if category != "ALL":
+
+                if product_category != category:
+
+                    continue
+
+            # ======================================
+            # Clean response
+            # ======================================
+
+            products.append({
+                "symbol": symbol,
+                "name": name,
+                "exchange": item_exchange,
+                "category": product_category,
+                "instrument_type": instrument_type,
+                "segment": segment,
+                "instrument_token": item.get(
+                    "instrument_token"
+                ),
+                "exchange_token": item.get(
+                    "exchange_token"
+                ),
+                "expiry": item.get("expiry"),
+                "strike": item.get("strike"),
+                "lot_size": item.get("lot_size"),
+                "tick_size": item.get("tick_size")
+            })
+
+        # ==========================================
+        # Remove duplicates
+        # ==========================================
+
+        unique_products = {}
+
+        for product in products:
+
+            key = (
+                product["exchange"],
+                product["symbol"],
+                product["instrument_type"],
+                str(product["expiry"])
+            )
+
+            unique_products[key] = product
+
+        products = list(unique_products.values())
+
+        # ==========================================
+        # Sort
+        # ==========================================
+
+        products.sort(
+            key=lambda x: (
+                x["exchange"],
+                x["category"],
+                x["symbol"]
+            )
+        )
+
+        # ==========================================
+        # Pagination
+        # ==========================================
+
+        total = len(products)
+
+        start = (page - 1) * limit
+        end = start + limit
+
+        paginated_products = products[start:end]
+
+        total_pages = (
+            (total + limit - 1) // limit
+            if total > 0
+            else 0
+        )
+
+        # ==========================================
+        # Response
+        # ==========================================
+
+        return jsonify({
+            "success": True,
+            "filters": {
+                "exchange": exchange,
+                "search": search,
+                "category": category
+            },
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total,
+                "total_pages": total_pages
+            },
+            "data": paginated_products
+        })
+
+    except Exception as e:
+
+        print(
+            "KITE PRODUCTS ERROR:",
+            str(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # =========================================================
 # START WEBSOCKET SERVICE
 # =========================================================
