@@ -129,27 +129,51 @@ def kite_profile():
 @app.route("/api/kite/instruments", methods=["GET"])
 def kite_instruments():
 
+    print("====================================")
+    print("KITE INSTRUMENTS HIT")
+
     access_token = app.config.get("KITE_ACCESS_TOKEN")
 
+    print("TOKEN EXISTS:", bool(access_token))
+    print("TOKEN LENGTH:", len(access_token) if access_token else 0)
+
     if not access_token:
+        print("ERROR: KITE_ACCESS_TOKEN NOT FOUND")
+        print("====================================")
+
         return jsonify({
             "success": False,
             "error": "Zerodha is not connected"
         }), 401
 
     try:
+
         kite.set_access_token(access_token)
 
-        # Get all instruments from Zerodha
-        instruments = kite.instruments()
+        exchange = request.args.get("exchange")
+
+        print("EXCHANGE:", exchange)
+
+        if exchange:
+            instruments = kite.instruments(exchange.upper())
+        else:
+            instruments = kite.instruments()
+
+        print("INSTRUMENT COUNT:", len(instruments))
+        print("====================================")
 
         return jsonify({
             "success": True,
+            "exchange": exchange or "ALL",
             "count": len(instruments),
             "data": instruments
         })
 
     except Exception as e:
+
+        print("KITE INSTRUMENT ERROR:", str(e))
+        print("====================================")
+
         return jsonify({
             "success": False,
             "error": str(e)
