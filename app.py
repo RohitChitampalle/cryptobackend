@@ -124,6 +124,36 @@ def kite_profile():
             "success": False,
             "error": str(e)
         }), 500
+    
+
+@app.route("/api/kite/instruments", methods=["GET"])
+def kite_instruments():
+
+    access_token = app.config.get("KITE_ACCESS_TOKEN")
+
+    if not access_token:
+        return jsonify({
+            "success": False,
+            "error": "Zerodha is not connected"
+        }), 401
+
+    try:
+        kite.set_access_token(access_token)
+
+        # Get all instruments from Zerodha
+        instruments = kite.instruments()
+
+        return jsonify({
+            "success": True,
+            "count": len(instruments),
+            "data": instruments
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # =========================================================
 # START WEBSOCKET SERVICE
 # =========================================================
