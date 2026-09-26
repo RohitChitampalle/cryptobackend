@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from datetime import datetime, timedelta
 from delta_service import DeltaService, place_order
 from analysis_service import (
     get_historical_candles,
@@ -455,6 +456,206 @@ threading.Thread(
     daemon=True
 ).start()
 
+#=========================================================
+#CHART DATA
+#=========================================================
+@app.route("/api/kite/chart", methods=["GET"])
+def kite_chart():
+
+    access_token = app.config.get("KITE_ACCESS_TOKEN")
+
+    if not access_token:
+        return jsonify({
+            "success": False,
+            "error": "Zerodha is not connected"
+        }), 401
+
+    try:
+
+        kite.set_access_token(access_token)
+
+        # ==========================================
+        # Query parameters
+        # ==========================================
+
+        exchange = request.args.get("exchange", "NSE").upper()
+        symbol = request.args.get("symbol")
+
+        interval = request.args.get(
+            "interval",
+            "5minute"
+        )
+
+        from_date = request.args.get("from")
+        to_date = request.args.get("to")
+
+        if not symbol:
+            return jsonify({
+                "success": False,
+                "error": "symbol is required"
+            }), 400
+
+        # ==========================================
+        # Supported intervals
+        # ==========================================
+
+        valid_intervals = [
+            "minute",
+            "3minute",
+            "5minute",
+            "10minute",
+            "15minute",
+            "30minute",
+            "60minute",
+            "day"
+        ]
+
+        if interval not in valid_intervals:
+            return jsonify({
+                "success": False,
+                "error": "Invalid interval",
+                "valid_intervals": valid_intervals
+            }), 400
+
+        # ==========================================
+        # Find instrument
+        # ==========================================
+
+        instruments = kite.instruments(exchange)
+
+        instrument = None
+
+        for item in instruments:
+
+            if (
+                item.get("tradingsymbol", "").upper()
+                == symbol.upper()
+            ):
+                instrument = item
+                break
+
+        if not instrument:
+
+            return jsonify({
+                "success": False,
+                "error": "Instrument not found",
+                "exchange": exchange,
+                "symbol": symbol
+            }), 404
+
+        instrument_token = instrument.get(
+            "instrument_token"
+        )
+
+        # ==========================================
+        # Date range
+        # ==========================================
+
+        if from_date:
+            try:
+                from_dt = datetime.strptime(
+                    from_date,
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid 'from' date. Use YYYY-MM-DD"
+                }), 400
+
+        else:
+
+            from_dt = datetime.now() - timedelta(days=5)
+
+        if to_date:
+
+            try:
+                to_dt = datetime.strptime(
+                    to_date,
+                    "%Y-%m-%d"
+                )
+
+            except ValueError:
+
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid 'to' date. Use YYYY-MM-DD"
+                }), 400
+
+        else:
+
+            to_dt = datetime.now()
+
+        # ==========================================
+        # Get historical candles
+        # ==========================================
+
+        candles = kite.historical_data(
+            instrument_token,
+            from_dt,
+            to_dt,
+            interval,
+            continuous=False,
+            oi=True
+        )
+
+        # ==========================================
+        # Convert to chart format
+        # ==========================================
+
+        chart_data = []
+
+        for candle in candles:
+
+            chart_data.append({
+                "timestamp": candle.get("date"),
+                "open": candle.get("open"),
+                "high": candle.get("high"),
+                "low": candle.get("low"),
+                "close": candle.get("close"),
+                "volume": candle.get("volume", 0),
+                "oi": candle.get("oi", 0)
+            })
+
+        # ==========================================
+        # Response
+        # ==========================================
+
+        return jsonify({
+            "success": True,
+
+            "instrument": {
+                "exchange": exchange,
+                "symbol": symbol,
+                "instrument_token": instrument_token,
+                "name": instrument.get("name"),
+                "instrument_type": instrument.get(
+                    "instrument_type"
+                )
+            },
+
+            "interval": interval,
+
+            "from": from_dt.strftime("%Y-%m-%d"),
+
+            "to": to_dt.strftime("%Y-%m-%d"),
+
+            "count": len(chart_data),
+
+            "data": chart_data
+        })
+
+    except Exception as e:
+
+        print("====================================")
+        print("KITE CHART ERROR")
+        print(str(e))
+        print("====================================")
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 # =========================================================
 # HEALTH CHECK
 # =========================================================
