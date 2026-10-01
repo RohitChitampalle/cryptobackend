@@ -459,6 +459,207 @@ threading.Thread(
 #=========================================================
 #CHART DATA
 #=========================================================
+# @app.route("/api/kite/chart", methods=["GET"])
+# def kite_chart():
+
+#     access_token = app.config.get("KITE_ACCESS_TOKEN")
+
+#     if not access_token:
+#         return jsonify({
+#             "success": False,
+#             "error": "Zerodha is not connected"
+#         }), 401
+
+#     try:
+
+#         kite.set_access_token(access_token)
+
+#         # ==========================================
+#         # Query parameters
+#         # ==========================================
+
+#         exchange = request.args.get("exchange", "NSE").upper()
+#         symbol = request.args.get("symbol")
+
+#         interval = request.args.get(
+#             "interval",
+#             "5minute"
+#         )
+
+#         from_date = request.args.get("from")
+#         to_date = request.args.get("to")
+
+#         if not symbol:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "symbol is required"
+#             }), 400
+
+#         # ==========================================
+#         # Supported intervals
+#         # ==========================================
+
+#         valid_intervals = [
+#             "minute",
+#             "3minute",
+#             "5minute",
+#             "10minute",
+#             "15minute",
+#             "30minute",
+#             "60minute",
+#             "day"
+#         ]
+
+#         if interval not in valid_intervals:
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Invalid interval",
+#                 "valid_intervals": valid_intervals
+#             }), 400
+
+#         # ==========================================
+#         # Find instrument
+#         # ==========================================
+
+#         instruments = kite.instruments(exchange)
+
+#         instrument = None
+
+#         for item in instruments:
+
+#             if (
+#                 item.get("tradingsymbol", "").upper()
+#                 == symbol.upper()
+#             ):
+#                 instrument = item
+#                 break
+
+#         if not instrument:
+
+#             return jsonify({
+#                 "success": False,
+#                 "error": "Instrument not found",
+#                 "exchange": exchange,
+#                 "symbol": symbol
+#             }), 404
+
+#         instrument_token = instrument.get(
+#             "instrument_token"
+#         )
+
+#         # ==========================================
+#         # Date range
+#         # ==========================================
+
+#         if from_date:
+#             try:
+#                 from_dt = datetime.strptime(
+#                     from_date,
+#                     "%Y-%m-%d"
+#                 )
+#             except ValueError:
+#                 return jsonify({
+#                     "success": False,
+#                     "error": "Invalid 'from' date. Use YYYY-MM-DD"
+#                 }), 400
+
+#         else:
+
+#             from_dt = datetime.now() - timedelta(days=5)
+
+#         if to_date:
+
+#             try:
+#                 to_dt = datetime.strptime(
+#                     to_date,
+#                     "%Y-%m-%d"
+#                 )
+
+#             except ValueError:
+
+#                 return jsonify({
+#                     "success": False,
+#                     "error": "Invalid 'to' date. Use YYYY-MM-DD"
+#                 }), 400
+
+#         else:
+
+#             to_dt = datetime.now()
+
+#         # ==========================================
+#         # Get historical candles
+#         # ==========================================
+
+#         candles = kite.historical_data(
+#             instrument_token,
+#             from_dt,
+#             to_dt,
+#             interval,
+#             continuous=False,
+#             oi=True
+#         )
+
+#         # ==========================================
+#         # Convert to chart format
+#         # ==========================================
+
+#         chart_data = []
+
+#         for candle in candles:
+
+#             chart_data.append({
+#                 "timestamp": candle.get("date"),
+#                 "open": candle.get("open"),
+#                 "high": candle.get("high"),
+#                 "low": candle.get("low"),
+#                 "close": candle.get("close"),
+#                 "volume": candle.get("volume", 0),
+#                 "oi": candle.get("oi", 0)
+#             })
+
+#         # ==========================================
+#         # Response
+#         # ==========================================
+
+#         return jsonify({
+#             "success": True,
+
+#             "instrument": {
+#                 "exchange": exchange,
+#                 "symbol": symbol,
+#                 "instrument_token": instrument_token,
+#                 "name": instrument.get("name"),
+#                 "instrument_type": instrument.get(
+#                     "instrument_type"
+#                 )
+#             },
+
+#             "interval": interval,
+
+#             "from": from_dt.strftime("%Y-%m-%d"),
+
+#             "to": to_dt.strftime("%Y-%m-%d"),
+
+#             "count": len(chart_data),
+
+#             "data": chart_data
+#         })
+
+#     except Exception as e:
+
+#         print("====================================")
+#         print("KITE CHART ERROR")
+#         print(str(e))
+#         print("====================================")
+
+#         return jsonify({
+#             "success": False,
+#             "error": str(e)
+#         }), 500
+# =========================================================
+# KITE CHART DATA
+# =========================================================
+
 @app.route("/api/kite/chart", methods=["GET"])
 def kite_chart():
 
@@ -474,30 +675,60 @@ def kite_chart():
 
         kite.set_access_token(access_token)
 
-        # ==========================================
-        # Query parameters
-        # ==========================================
+        # =====================================================
+        # QUERY PARAMETERS
+        # =====================================================
 
-        exchange = request.args.get("exchange", "NSE").upper()
-        symbol = request.args.get("symbol")
+        exchange = request.args.get(
+            "exchange",
+            "NSE"
+        ).strip().upper()
+
+        symbol = request.args.get(
+            "symbol",
+            ""
+        ).strip()
+
+        instrument_token_param = request.args.get(
+            "instrument_token",
+            ""
+        ).strip()
 
         interval = request.args.get(
             "interval",
             "5minute"
-        )
+        ).strip().lower()
 
-        from_date = request.args.get("from")
-        to_date = request.args.get("to")
+        from_date = request.args.get(
+            "from",
+            ""
+        ).strip()
 
-        if not symbol:
+        to_date = request.args.get(
+            "to",
+            ""
+        ).strip()
+
+        print("\n====================================")
+        print("KITE CHART REQUEST")
+        print("Exchange         :", exchange)
+        print("Symbol           :", symbol)
+        print("Instrument Token :", instrument_token_param)
+        print("Interval         :", interval)
+        print("From             :", from_date)
+        print("To               :", to_date)
+        print("====================================")
+
+        # =====================================================
+        # VALIDATION
+        # =====================================================
+
+        if not symbol and not instrument_token_param:
+
             return jsonify({
                 "success": False,
-                "error": "symbol is required"
+                "error": "symbol or instrument_token is required"
             }), 400
-
-        # ==========================================
-        # Supported intervals
-        # ==========================================
 
         valid_intervals = [
             "minute",
@@ -511,150 +742,463 @@ def kite_chart():
         ]
 
         if interval not in valid_intervals:
+
             return jsonify({
                 "success": False,
                 "error": "Invalid interval",
                 "valid_intervals": valid_intervals
             }), 400
 
-        # ==========================================
-        # Find instrument
-        # ==========================================
-
-        instruments = kite.instruments(exchange)
+        # =====================================================
+        # FIND INSTRUMENT
+        # =====================================================
 
         instrument = None
 
-        for item in instruments:
+        # -----------------------------------------------------
+        # OPTION 1:
+        # Frontend sends instrument_token
+        # -----------------------------------------------------
 
-            if (
-                item.get("tradingsymbol", "").upper()
-                == symbol.upper()
-            ):
-                instrument = item
-                break
+        if instrument_token_param:
+
+            try:
+                instrument_token = int(
+                    instrument_token_param
+                )
+            except ValueError:
+
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid instrument_token"
+                }), 400
+
+            # Load instruments for metadata
+            instruments = kite.instruments(exchange)
+
+            for item in instruments:
+
+                if int(
+                    item.get("instrument_token", 0)
+                ) == instrument_token:
+
+                    instrument = item
+                    break
+
+        # -----------------------------------------------------
+        # OPTION 2:
+        # Find by exchange + tradingsymbol
+        # -----------------------------------------------------
+
+        else:
+
+            instruments = kite.instruments(exchange)
+
+            requested_symbol = symbol.upper()
+
+            for item in instruments:
+
+                trading_symbol = str(
+                    item.get("tradingsymbol") or ""
+                ).strip().upper()
+
+                if trading_symbol == requested_symbol:
+
+                    instrument = item
+                    break
+
+        # =====================================================
+        # INSTRUMENT NOT FOUND
+        # =====================================================
 
         if not instrument:
 
+            print(
+                "KITE INSTRUMENT NOT FOUND:",
+                exchange,
+                symbol,
+                instrument_token_param
+            )
+
+            # Find similar instruments for debugging
+            similar_instruments = []
+
+            if symbol:
+
+                requested = symbol.upper()
+
+                for item in instruments:
+
+                    trading_symbol = str(
+                        item.get("tradingsymbol") or ""
+                    ).upper()
+
+                    if (
+                        requested[:6] in trading_symbol
+                        or trading_symbol[:6] in requested
+                    ):
+
+                        similar_instruments.append({
+                            "tradingsymbol":
+                                item.get("tradingsymbol"),
+
+                            "name":
+                                item.get("name"),
+
+                            "instrument_type":
+                                item.get("instrument_type"),
+
+                            "expiry":
+                                item.get("expiry"),
+
+                            "strike":
+                                item.get("strike"),
+
+                            "instrument_token":
+                                item.get("instrument_token")
+                        })
+
+                    if len(similar_instruments) >= 20:
+                        break
+
             return jsonify({
+
                 "success": False,
-                "error": "Instrument not found",
-                "exchange": exchange,
-                "symbol": symbol
+
+                "error":
+                    "Instrument not found",
+
+                "exchange":
+                    exchange,
+
+                "symbol":
+                    symbol,
+
+                "instrument_token":
+                    instrument_token_param,
+
+                "similar_instruments":
+                    similar_instruments
+
             }), 404
+
+        # =====================================================
+        # INSTRUMENT DETAILS
+        # =====================================================
 
         instrument_token = instrument.get(
             "instrument_token"
         )
 
-        # ==========================================
-        # Date range
-        # ==========================================
+        actual_symbol = instrument.get(
+            "tradingsymbol"
+        )
+
+        instrument_name = instrument.get(
+            "name"
+        )
+
+        instrument_type = instrument.get(
+            "instrument_type"
+        )
+
+        print("\nInstrument Found")
+        print("------------------------------")
+        print("Exchange :", exchange)
+        print("Symbol   :", actual_symbol)
+        print("Name     :", instrument_name)
+        print("Type     :", instrument_type)
+        print("Token    :", instrument_token)
+        print("Expiry   :", instrument.get("expiry"))
+        print("Strike   :", instrument.get("strike"))
+        print("------------------------------")
+
+        if not instrument_token:
+
+            return jsonify({
+                "success": False,
+                "error": "Instrument token not available",
+                "exchange": exchange,
+                "symbol": actual_symbol
+            }), 404
+
+        # =====================================================
+        # DATE RANGE
+        # =====================================================
 
         if from_date:
+
             try:
+
                 from_dt = datetime.strptime(
                     from_date,
                     "%Y-%m-%d"
                 )
+
             except ValueError:
+
                 return jsonify({
                     "success": False,
-                    "error": "Invalid 'from' date. Use YYYY-MM-DD"
+                    "error":
+                        "Invalid 'from' date. Use YYYY-MM-DD"
                 }), 400
 
         else:
 
-            from_dt = datetime.now() - timedelta(days=5)
+            # Default chart history
+            #
+            # Day chart -> 1 year
+            # Intraday -> 5 days
+
+            if interval == "day":
+
+                from_dt = (
+                    datetime.now()
+                    - timedelta(days=365)
+                )
+
+            elif interval in [
+                "60minute",
+                "30minute"
+            ]:
+
+                from_dt = (
+                    datetime.now()
+                    - timedelta(days=30)
+                )
+
+            else:
+
+                from_dt = (
+                    datetime.now()
+                    - timedelta(days=5)
+                )
+
+        # =====================================================
+        # TO DATE
+        # =====================================================
 
         if to_date:
 
             try:
+
+                # Include entire requested day
                 to_dt = datetime.strptime(
                     to_date,
                     "%Y-%m-%d"
                 )
 
+                to_dt = to_dt.replace(
+                    hour=23,
+                    minute=59,
+                    second=59
+                )
+
             except ValueError:
 
                 return jsonify({
                     "success": False,
-                    "error": "Invalid 'to' date. Use YYYY-MM-DD"
+                    "error":
+                        "Invalid 'to' date. Use YYYY-MM-DD"
                 }), 400
 
         else:
 
             to_dt = datetime.now()
 
-        # ==========================================
-        # Get historical candles
-        # ==========================================
+        # =====================================================
+        # HISTORICAL DATA
+        # =====================================================
+
+        print("\nFetching historical candles...")
+        print("Token    :", instrument_token)
+        print("From     :", from_dt)
+        print("To       :", to_dt)
+        print("Interval :", interval)
 
         candles = kite.historical_data(
+
             instrument_token,
+
             from_dt,
+
             to_dt,
+
             interval,
+
             continuous=False,
+
             oi=True
+
         )
 
-        # ==========================================
-        # Convert to chart format
-        # ==========================================
+        print(
+            "Candles received:",
+            len(candles)
+        )
+
+        # =====================================================
+        # CONVERT TO CHART FORMAT
+        # =====================================================
 
         chart_data = []
 
         for candle in candles:
 
             chart_data.append({
-                "timestamp": candle.get("date"),
-                "open": candle.get("open"),
-                "high": candle.get("high"),
-                "low": candle.get("low"),
-                "close": candle.get("close"),
-                "volume": candle.get("volume", 0),
-                "oi": candle.get("oi", 0)
+
+                "timestamp":
+                    candle.get("date"),
+
+                "open":
+                    float(candle.get("open", 0)),
+
+                "high":
+                    float(candle.get("high", 0)),
+
+                "low":
+                    float(candle.get("low", 0)),
+
+                "close":
+                    float(candle.get("close", 0)),
+
+                "volume":
+                    int(
+                        candle.get(
+                            "volume",
+                            0
+                        ) or 0
+                    ),
+
+                "oi":
+                    int(
+                        candle.get(
+                            "oi",
+                            0
+                        ) or 0
+                    )
+
             })
 
-        # ==========================================
-        # Response
-        # ==========================================
+        # =====================================================
+        # RESPONSE
+        # =====================================================
 
-        return jsonify({
+        response = {
+
             "success": True,
 
             "instrument": {
-                "exchange": exchange,
-                "symbol": symbol,
-                "instrument_token": instrument_token,
-                "name": instrument.get("name"),
-                "instrument_type": instrument.get(
-                    "instrument_type"
-                )
+
+                "exchange":
+                    exchange,
+
+                "symbol":
+                    actual_symbol,
+
+                "instrument_token":
+                    instrument_token,
+
+                "name":
+                    instrument_name,
+
+                "instrument_type":
+                    instrument_type,
+
+                "segment":
+                    instrument.get(
+                        "segment"
+                    ),
+
+                "expiry":
+                    instrument.get(
+                        "expiry"
+                    ),
+
+                "strike":
+                    instrument.get(
+                        "strike"
+                    ),
+
+                "lot_size":
+                    instrument.get(
+                        "lot_size"
+                    ),
+
+                "tick_size":
+                    instrument.get(
+                        "tick_size"
+                    )
+
             },
 
-            "interval": interval,
+            "interval":
+                interval,
 
-            "from": from_dt.strftime("%Y-%m-%d"),
+            "from":
+                from_dt.strftime(
+                    "%Y-%m-%d"
+                ),
 
-            "to": to_dt.strftime("%Y-%m-%d"),
+            "to":
+                to_dt.strftime(
+                    "%Y-%m-%d"
+                ),
 
-            "count": len(chart_data),
+            "count":
+                len(chart_data),
 
-            "data": chart_data
-        })
+            "data":
+                chart_data
+
+        }
+
+        print(
+            "Chart response:",
+            len(chart_data),
+            "candles"
+        )
+
+        print("====================================\n")
+
+        return jsonify(response)
+
+    # =========================================================
+    # KITE / API ERROR
+    # =========================================================
 
     except Exception as e:
 
-        print("====================================")
+        print("\n====================================")
         print("KITE CHART ERROR")
-        print(str(e))
         print("====================================")
+        print(str(e))
+        traceback.print_exc()
+        print("====================================\n")
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e),
+
+            "exchange":
+                request.args.get(
+                    "exchange"
+                ),
+
+            "symbol":
+                request.args.get(
+                    "symbol"
+                ),
+
+            "interval":
+                request.args.get(
+                    "interval"
+                )
+
         }), 500
 # =========================================================
 # HEALTH CHECK
