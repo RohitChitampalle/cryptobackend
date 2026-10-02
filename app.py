@@ -363,559 +363,231 @@ def kite_instruments():
 # =========================================================
 
 @app.route("/api/kite/products", methods=["GET"])
-
 def kite_products():
+    """Search Kite instruments like a broker search box.
 
-
-
+    Examples:
+      /api/kite/products?exchange=NFO&category=OPTIONS&search=NIFTY%2022800
+      /api/kite/products?exchange=NFO&category=OPTIONS&search=NIFTY%2022800%20CE
+      /api/kite/products?exchange=NFO&category=OPTIONS&underlying=NIFTY&strike=22800&option_type=CE
+    """
     access_token = app.config.get("KITE_ACCESS_TOKEN")
-
-
-
     if not access_token:
-
-        return jsonify({
-
-            "success": False,
-
-            "error": "Zerodha is not connected"
-
-        }), 401
-
-
+        return jsonify({"success": False, "error": "Zerodha is not connected"}), 401
 
     try:
-
-
-
         kite.set_access_token(access_token)
 
-
-
-        # ==========================================
-
-        # Query parameters
-
-        # ==========================================
-
-
-
-        exchange = request.args.get("exchange", "ALL").upper()
-
-        search = request.args.get("search", "").strip().upper()
-
-        category = request.args.get("category", "ALL").upper()
-
-
-
-        # Pagination
+        exchange = request.args.get("exchange", "ALL").upper().strip()
+        search = " ".join(request.args.get("search", "").upper().strip().split())
+        category = request.args.get("category", "ALL").upper().strip()
+        underlying_filter = request.args.get("underlying", "").upper().strip()
+        option_type_filter = request.args.get("option_type", "").upper().strip()
+        strike_raw = request.args.get("strike", "").strip()
 
         try:
+            strike_filter = float(strike_raw) if strike_raw else None
+        except ValueError:
+            return jsonify({"success": False, "error": "Invalid strike"}), 400
 
+        try:
             page = max(int(request.args.get("page", 1)), 1)
-
         except ValueError:
-
             page = 1
-
-
-
         try:
-
-            limit = min(
-
-                max(int(request.args.get("limit", 100)), 1),
-
-                500
-
-            )
-
+            limit = min(max(int(request.args.get("limit", 100)), 1), 500)
         except ValueError:
-
             limit = 100
 
-
-
-        # ==========================================
-
-        # Supported exchanges
-
-        # ==========================================
-
-
-
-        valid_exchanges = [
-
-            "NSE",
-
-            "BSE",
-
-            "NFO",
-
-            "BFO",
-
-            "MCX",
-
-            "CDS"
-
-        ]
-
-
-
+        valid_exchanges = ["NSE", "BSE", "NFO", "BFO", "MCX", "CDS"]
         if exchange != "ALL" and exchange not in valid_exchanges:
-
             return jsonify({
-
                 "success": False,
-
                 "error": "Invalid exchange",
-
                 "valid_exchanges": valid_exchanges
-
             }), 400
 
+        # If a natural option search is supplied, automatically search NFO OPTIONS.
+        normalized_search = search.replace("-", " ")
+        search_parts = normalized_search.split()
+        parsed_underlying = None
+        parsed_strike = None
+        parsed_option_type = None
 
+        if search_parts:
+            for part in search_parts:
+                if part in ("CE", "PE"):
+                    parsed_option_type = part
+                else:
+                    try:
+                        value = float(part)
+                        if value >= 0:
+                            parsed_strike = value
+                    except ValueError:
+                        if part in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "SENSEX", "BANKEX"):
+                            parsed_underlying = part
 
-        # ==========================================
+        natural_option_search = (
+            parsed_underlying is not None and parsed_strike is not None
+        )
 
-        # Get instruments
+        if natural_option_search:
+            exchange = "NFO"
+            category = "OPTIONS"
+            underlying_filter = parsed_underlying
+            if strike_filter is None:
+                strike_filter = parsed_strike
+            if not option_type_filter and parsed_option_type:
+                option_type_filter = parsed_option_type
 
-        # ==========================================
-
-
+        if option_type_filter and option_type_filter not in ("CE", "PE"):
+            return jsonify({"success": False, "error": "option_type must be CE or PE"}), 400
 
         if exchange == "ALL":
-
-
-
             instruments = []
-
-
-
             for ex in valid_exchanges:
-
-
-
                 try:
-
-                    data = kite.instruments(ex)
-
-                    instruments.extend(data)
-
-
-
+                    instruments.extend(kite.instruments(ex))
                 except Exception as ex_error:
-
-
-
-                    print(
-
-                        f"Failed to load {ex} instruments:",
-
-                        str(ex_error)
-
-                    )
-
-
-
+                    print(f"Failed to load {ex} instruments: {ex_error}")
         else:
-
-
-
             instruments = kite.instruments(exchange)
-
-
-
-        # ==========================================
-
-        # Process instruments
-
-        # ==========================================
-
-
 
         products = []
 
-
-
         for item in instruments:
-
-
-
-            symbol = item.get("tradingsymbol", "")
-
-            name = item.get("name", "")
-
-            instrument_type = item.get("instrument_type", "")
-
-            segment = item.get("segment", "")
-
-            item_exchange = item.get("exchange", "")
-
-
-
+            symbol = str(item.get("tradingsymbol") or "")
+            name = str(item.get("name") or "")
+            instrument_type = str(item.get("instrument_type") or "").upper()
+            segment = str(item.get("segment") or "")
+            item_exchange = str(item.get("exchange") or exchange)
             symbol_upper = symbol.upper()
-
             name_upper = name.upper()
+            segment_upper = segment.upper()
 
-
-
-            # ======================================
-
-            # Determine category
-
-            # ======================================
-
-
-
-            if segment == "INDICES":
-
-
-
+            if segment_upper == "INDICES":
                 product_category = "INDEX"
-
-
-
             elif instrument_type == "EQ":
-
-
-
                 product_category = "EQUITY"
-
-
-
             elif instrument_type == "FUT":
-
-
-
                 product_category = "FUTURES"
-
-
-
-            elif instrument_type in ["CE", "PE"]:
-
-
-
+            elif instrument_type in ("CE", "PE"):
                 product_category = "OPTIONS"
-
-
-
             elif instrument_type == "COM":
-
-
-
                 product_category = "COMMODITY"
-
-
-
             else:
-
-
-
                 product_category = instrument_type or "OTHER"
 
+            if category != "ALL" and product_category != category:
+                continue
 
-
-            # ======================================
-
-            # Search filter
-
-            # ======================================
-
-
-
-            if search:
-
-                # Normal symbol/name search
-                search_match = (
-                    search in symbol_upper
-                    or search in name_upper
-                )
-
-                # --------------------------------------------------
-                # NIFTY OPTION SEARCH
-                # Supports:
-                #   NIFTY 22800
-                #   NIFTY 22800 CE
-                #   NIFTY 22800 PE
-                # --------------------------------------------------
-                option_search_match = False
-
-                if (
-                    "NIFTY" in search
-                    and product_category == "OPTIONS"
-                ):
-                    parts = search.replace("-", " ").split()
-
-                    strike_search = None
-                    option_type_search = None
-
-                    for part in parts:
-                        if part.isdigit():
-                            strike_search = float(part)
-
-                        if part in ["CE", "PE"]:
-                            option_type_search = part
-
-                    product_strike = item.get("strike")
-
-                    try:
-                        product_strike = float(product_strike)
-                    except (TypeError, ValueError):
-                        product_strike = None
-
-                    strike_match = (
-                        strike_search is None
-                        or (
-                            product_strike is not None
-                            and product_strike == strike_search
-                        )
-                    )
-
-                    option_type_match = (
-                        option_type_search is None
-                        or instrument_type == option_type_search
-                    )
-
-                    nifty_match = (
-                        "NIFTY" in symbol_upper
-                        or "NIFTY" in name_upper
-                    )
-
-                    option_search_match = (
-                        nifty_match
-                        and strike_match
-                        and option_type_match
-                    )
-
-                if not search_match and not option_search_match:
+            # Exact structured filters for options.
+            if underlying_filter:
+                item_underlying = name_upper
+                if not item_underlying:
+                    # Fallback for symbols such as NIFTY26OCT22800CE.
+                    item_underlying = symbol_upper
+                if underlying_filter not in item_underlying and underlying_filter not in symbol_upper:
                     continue
 
-
-
-            # ======================================
-
-            # Category filter
-
-            # ======================================
-
-
-
-            if category != "ALL":
-
-
-
-                if product_category != category:
-
-
-
+            if strike_filter is not None:
+                try:
+                    item_strike = float(item.get("strike"))
+                except (TypeError, ValueError):
+                    continue
+                if abs(item_strike - strike_filter) > 1e-9:
                     continue
 
+            if option_type_filter and instrument_type != option_type_filter:
+                continue
 
+            # Generic broker-style text search. For structured option searches,
+            # the individual fields above do the actual matching.
+            if search and not natural_option_search:
+                tokens = search.split()
+                searchable = " ".join([
+                    symbol_upper,
+                    name_upper,
+                    segment_upper,
+                    instrument_type
+                ])
+                if not all(token in searchable for token in tokens):
+                    continue
 
-            # ======================================
-
-            # Clean response
-
-            # ======================================
-
-
+            # For NIFTY 22800 / NIFTY 22800 CE / PE, require the underlying.
+            if natural_option_search:
+                if product_category != "OPTIONS":
+                    continue
+                if parsed_underlying and parsed_underlying not in name_upper and parsed_underlying not in symbol_upper:
+                    continue
 
             products.append({
-
                 "symbol": symbol,
-
+                "tradingsymbol": symbol,
                 "name": name,
-
+                "underlying": name,
                 "exchange": item_exchange,
-
                 "category": product_category,
-
                 "instrument_type": instrument_type,
-
                 "segment": segment,
-
-                "instrument_token": item.get(
-
-                    "instrument_token"
-
-                ),
-
-                "exchange_token": item.get(
-
-                    "exchange_token"
-
-                ),
-
+                "instrument_token": item.get("instrument_token"),
+                "exchange_token": item.get("exchange_token"),
                 "expiry": item.get("expiry"),
-
                 "strike": item.get("strike"),
-
                 "lot_size": item.get("lot_size"),
-
                 "tick_size": item.get("tick_size")
-
             })
 
-
-
-        # ==========================================
-
-        # Remove duplicates
-
-        # ==========================================
-
-
-
+        # De-duplicate exact contracts.
         unique_products = {}
-
-
-
         for product in products:
-
-
-
             key = (
-
                 product["exchange"],
-
                 product["symbol"],
-
                 product["instrument_type"],
-
-                str(product["expiry"])
-
+                str(product["expiry"]),
+                str(product["strike"])
             )
-
-
-
             unique_products[key] = product
-
-
 
         products = list(unique_products.values())
 
-
-
-        # ==========================================
-
-        # Sort
-
-        # ==========================================
-
-
-
-        products.sort(
-
-            key=lambda x: (
-
-                x["exchange"],
-
-                x["category"],
-
-                x["symbol"]
-
-            )
-
-        )
-
-
-
-        # ==========================================
-
-        # Pagination
-
-        # ==========================================
-
-
+        # Natural option searches should be easy to read: expiry, strike, CE/PE.
+        products.sort(key=lambda x: (
+            str(x.get("expiry") or ""),
+            float(x.get("strike") or 0),
+            0 if x.get("instrument_type") == "CE" else 1,
+            x.get("symbol", "")
+        ))
 
         total = len(products)
-
-
-
         start = (page - 1) * limit
-
-        end = start + limit
-
-
-
-        paginated_products = products[start:end]
-
-
-
-        total_pages = (
-
-            (total + limit - 1) // limit
-
-            if total > 0
-
-            else 0
-
-        )
-
-
-
-        # ==========================================
-
-        # Response
-
-        # ==========================================
-
-
+        paginated_products = products[start:start + limit]
+        total_pages = (total + limit - 1) // limit if total else 0
 
         return jsonify({
-
             "success": True,
-
             "filters": {
-
                 "exchange": exchange,
-
                 "search": search,
-
-                "category": category
-
+                "category": category,
+                "underlying": underlying_filter,
+                "strike": strike_filter,
+                "option_type": option_type_filter
             },
-
             "pagination": {
-
                 "page": page,
-
                 "limit": limit,
-
                 "total": total,
-
                 "total_pages": total_pages
-
             },
-
             "data": paginated_products
-
         })
 
-
-
     except Exception as e:
-
-
-
-        print(
-
-            "KITE PRODUCTS ERROR:",
-
-            str(e)
-
-        )
-
-
-
-        return jsonify({
-
-            "success": False,
-
-            "error": str(e)
-
-        }), 500
+        print("KITE PRODUCTS ERROR:", str(e))
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # =========================================================
 
